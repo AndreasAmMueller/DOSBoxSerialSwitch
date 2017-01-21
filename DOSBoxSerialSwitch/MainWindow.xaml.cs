@@ -13,7 +13,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
-//using System.Windows.Shapes;
+using Microsoft.Win32;
 using Unclassified.FieldLog;
 
 namespace DOSBoxSerialSwitch
@@ -23,17 +23,207 @@ namespace DOSBoxSerialSwitch
 	/// </summary>
 	public partial class MainWindow : Window
 	{
-		internal string filePath;
-		internal string configFile;
-		internal Dictionary<string, object> config;
-		internal string[] serialPorts;
+		private string configFilePath;
+		private string configFile;
+		private Dictionary<string, string[]> configSections;
+		private Dictionary<string, string> mapping;
 
 		public MainWindow()
 		{
 			InitializeComponent();
 			FL.AcceptLogFileBasePath();
+			mapping = new Dictionary<string, string>();
 
-			string[] files = null;
+			TryGetConfigFile();
+			if (configFilePath == null)
+			{
+				MessageBox.Show("No config file found.\nPlease search manually for it.", "Config file not found", MessageBoxButton.OK, MessageBoxImage.Information);
+			}
+			else
+			{
+				LoadConfiguration();
+			}
+		}
+
+		private void BrowseConfigFileButton_Click(object sender, RoutedEventArgs args)
+		{
+			string path;
+			if (configFilePath == null)
+			{
+				path = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+			}
+			else
+			{
+				path = Path.GetDirectoryName(configFilePath);
+			}
+
+			OpenFileDialog dialog = new OpenFileDialog
+			{
+				InitialDirectory = path,
+				CheckFileExists = true,
+				CheckPathExists = true,
+				DefaultExt = ".conf",
+				FileName = "dosbox.conf",
+				Title = "Open Config File",
+				RestoreDirectory = true
+			};
+
+			if (dialog.ShowDialog() == true)
+			{
+				configFilePath = dialog.FileName;
+				LoadConfiguration();
+			}
+		}
+
+		private void ApplyButton_Click(object sender, RoutedEventArgs args)
+		{
+			if (SerialPortsDosBox.SelectedItem == null ||
+				string.IsNullOrEmpty(SerialPortsSystem.Text.Trim()))
+			{
+				MessageBox.Show("Port can not be mapped.\nThere is an information missing.", "Mapping not possible", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+				return;
+			}
+
+			string dosbox = SerialPortsDosBox.Text.Trim();
+			string system = SerialPortsSystem.Text.Trim();
+
+			string[] lines = configFile.Split('\n');
+			for (int i = 0; i < lines.Length; i++)
+			{
+				string cur = lines[i];
+				if (cur.StartsWith("serial"))
+				{
+					if (cur.Contains(system))
+					{
+						string[] split = cur.Split('=');
+						lines[i] = $"{split[0]}=disabled";
+						mapping[split[0]] = "disabled";
+					}
+
+					if (cur.StartsWith(dosbox))
+					{
+						string[] serialPorts = SerialPortsSystem.Items.Cast<string>().ToArray();
+						if (serialPorts.Contains(system))
+						{
+							system = $"directserial realport:{system}";
+						}
+
+						lines[i] = $"{dosbox}={system}";
+						mapping[dosbox] = system;
+					}
+				}
+			}
+			configFile = string.Join("\n", lines);
+
+			try
+			{
+				using (var sw = new StreamWriter(configFilePath))
+				{
+					sw.Write(configFile);
+					sw.Flush();
+				}
+				MessageBox.Show("Settings successful written.", "Success", MessageBoxButton.OK);
+			}
+			catch (Exception ex)
+			{
+				FL.Critical(ex, $"Writing config file {configFilePath}.");
+				MessageBox.Show($"File\n{configFilePath}\ncould not be written.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+			}
+
+			string localSave = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DOSBoxSerialSwitchConfig.txt");
+			try
+			{
+				using (var sw = new StreamWriter(localSave))
+				{
+					sw.Write(configFilePath);
+					sw.Flush();
+				}
+			}
+			catch (Exception ex)
+			{
+				FL.Error(ex, $"Writing last config path to file {localSave}.");
+			}
+		}
+
+		private void CloseButton_Click(object sender, RoutedEventArgs args)
+		{
+			Close();
+		}
+
+		private void SerialPortsDosBox_SelectionChanged(object sender, SelectionChangedEventArgs args)
+		{
+			string[] serialPorts = SerialPortsSystem.Items.Cast<string>().ToArray();
+
+			string serial = SerialPortsDosBox.SelectedValue?.ToString().Trim() ?? SerialPortsDosBox.Text;
+			string map;
+			if (mapping.TryGetValue(serial, out map))
+			{
+				if (map.Contains("realport"))
+				{
+					string port = map.Substring(map.IndexOf(":") + 1);
+					if (serialPorts.Contains(port))
+					{
+						SerialPortsSystem.Text = port;
+					}
+					else
+					{
+						SerialPortsSystem.Text = "";
+					}
+				}
+				else
+				{
+					SerialPortsSystem.Text = map;
+				}
+			}
+
+			TryEnableInputs();
+		}
+
+		private void SerialPortsSystem_SelectionChanged(object sender, SelectionChangedEventArgs e)
+		{
+			TryEnableInputs();
+		}
+
+		private void LoadConfiguration()
+		{
+			ConfigFile.Text = configFilePath;
+			ReadConfig();
+			FillSerialPortsDOSBox();
+			FillSerialPortsSystem();
+
+			TryEnableInputs();
+		}
+
+		private bool TryGetConfigFile()
+		{
+			string localSave = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DOSBoxSerialSwitchConfig.txt");
+			if (File.Exists(localSave))
+			{
+				try
+				{
+					using (var sr = new StreamReader(localSave))
+					{
+						configFilePath = sr.ReadToEnd().Trim();
+					}
+				}
+				catch (Exception ex)
+				{
+					FL.Warning(ex, "Reading local save file.");
+					configFilePath = SearchDefaultConfig();
+				}
+			}
+			else
+			{
+				configFilePath = SearchDefaultConfig();
+			}
+
+			return !string.IsNullOrEmpty(configFilePath);
+		}
+
+		private string SearchDefaultConfig()
+		{
+			string[] files;
+
 			try
 			{
 				string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -41,170 +231,86 @@ namespace DOSBoxSerialSwitch
 
 				if (files.Length == 0)
 				{
-					FL.Error("No files found", Path.Combine(appData, "DOSBox"));
-					MessageBox.Show("No DOSBox config found.\nClosing application.", "No Config Found", MessageBoxButton.OK);
-					Close();
+					FL.Error("No config files found", Path.Combine(appData, "DOSBox"));
+					return null;
 				}
-				filePath = files[0];
+
+				return files[0];
 			}
 			catch (Exception ex)
 			{
-				FL.Error(ex, "Searching DOSBox config");
+				FL.Error(ex, "Searching default config file");
+				return null;
 			}
+		}
 
+		private void ReadConfig()
+		{
 			try
 			{
-				using (StreamReader sr = new StreamReader(filePath))
+				using (var sr = new StreamReader(configFilePath))
 				{
 					configFile = sr.ReadToEnd();
 				}
+
+				string[] lines = configFile.Split('\n').Where(l => !l.StartsWith("#") && !string.IsNullOrWhiteSpace(l.Trim())).ToArray();
+				for (int i = 0; i < lines.Length; i++)
+				{
+					lines[i] = lines[i].Trim();
+				}
+				string config = string.Join("\n", lines);
+				configSections = Regex.Matches(config, @"\[([\w]*)\]\n([^\[^\#]*)").Cast<Match>().ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value.Split('\n'));
 			}
 			catch (Exception ex)
 			{
-				FL.Error(ex, $"Reading the config file {filePath}");
+				FL.Error(ex, $"Reading the config from {configFile}");
 			}
-
-			try
-			{
-				ReadDosBoxFile();
-				ReadSerialPorts();
-
-				FillDropDowns();
-			}
-			catch (Exception)
-			{ /* QUIET!! */ }
 		}
 
-
-
-		private string GetParentDirectory(string path, int up = 1)
+		private void TryEnableInputs()
 		{
-			for (int i = 0; i < up; i++)
-			{
-				path = Directory.GetParent(path).ToString();
-			}
+			SerialPortsDosBox.IsEnabled = SerialPortsDosBox.Items.Count > 0;
+			SerialPortsSystem.IsEnabled = SerialPortsSystem.Items.Count > 0;
 
-			return path;
+			string dosbox = SerialPortsDosBox.SelectedValue?.ToString().Trim() ?? SerialPortsDosBox.Text;
+			string system = SerialPortsSystem.SelectedValue?.ToString().Trim() ?? SerialPortsSystem.Text;
+
+			ApplyButton.IsEnabled = SerialPortsDosBox.IsEnabled &&
+				!string.IsNullOrWhiteSpace(dosbox) &&
+				SerialPortsSystem.IsEnabled &&
+				!string.IsNullOrWhiteSpace(system);
 		}
 
-		private void CloseButton_Click(object sender, RoutedEventArgs e)
+		private void FillSerialPortsDOSBox()
 		{
-			Close();
-		}
+			SerialPortsDosBox.Items.Clear();
 
-		private void ApplyButton_Click(object sender, RoutedEventArgs e)
-		{
-			if (DosBoxPorts.SelectedItem == null
-				|| SerialPorts.SelectedItem == null)
+			string[] lines;
+			if (configSections.TryGetValue("serial", out lines))
 			{
-				MessageBox.Show("Both have to be set", "Port missing", MessageBoxButton.OK);
-				return;
-			}
-
-			string dosbox = DosBoxPorts.SelectedItem.ToString();
-			string serial = SerialPorts.SelectedItem.ToString();
-
-			string[] fileLines = configFile.Split('\n');
-			for (int i = 0; i < fileLines.Length; i++)
-			{
-				string line = fileLines[i];
-				if (line.StartsWith("serial"))
+				foreach (string line in lines)
 				{
-					if (line.Contains(serial))
-					{
-						string[] split = line.Split('=');
-						fileLines[i] = $"{split[0]}=disabled{(line.EndsWith("\r") ? "\r" : "")}";
-					}
+					string[] parts = line.Split('=');
+					string serial = parts[0].Trim();
 
-					if (line.StartsWith(dosbox))
+					if (!string.IsNullOrEmpty(serial))
 					{
-						fileLines[i] = $"{dosbox}=directserial realport:{serial}{(line.EndsWith("\r") ? "\r" : "")}";
+						SerialPortsDosBox.Items.Add(serial);
+						mapping[serial] = line.Replace($"{parts[0]}=", "").Trim();
 					}
 				}
 			}
-			configFile = string.Join("\n", fileLines);
-
-			try
-			{
-				File.WriteAllText(filePath, configFile);
-				MessageBox.Show("New settings successful written", "Success", MessageBoxButton.OK);
-			}
-			catch (Exception ex)
-			{
-				FL.Error(ex, "Writing config back");
-				MessageBox.Show($"File\n{filePath}\nCould not be written", "Write Error", MessageBoxButton.OK);
-			}
 		}
 
-		private void ReadDosBoxFile()
+		private void FillSerialPortsSystem()
 		{
-			string[] fileLines = configFile.Split('\n').Where(l => !(l.StartsWith("#") || string.IsNullOrWhiteSpace(l.Trim()))).ToArray();
-
-			for (int i = 0; i < fileLines.Length; i++)
-				fileLines[i] = fileLines[i].Trim();
-
-			string text = string.Join("\n", fileLines);
-
-			Dictionary<string, string> sectionSplit = Regex.Matches(text, @"\[([\w]*)\]\n([^\[^\#]*)")
-				.Cast<Match>()
-				.ToDictionary(match => match.Groups[1].Value, match => match.Groups[2].Value);
-
-			config = new Dictionary<string, object>(sectionSplit.Count);
-			foreach (var section in sectionSplit)
-			{
-				string[] lines = section.Value.Split('\n');
-				if (section.Value.Contains("="))
-				{
-					Dictionary<string, string> props = Regex.Matches(section.Value, @"(\w*)=(.*)")
-						.Cast<Match>()
-						.ToDictionary(match => match.Groups[1].Value, match => match.Groups[2].Value);
-					config.Add(section.Key, props);
-				}
-				else
-				{
-					config.Add(section.Key, lines);
-				}
-			}
+			SerialPortsSystem.Items.Clear();
+			SerialPortsSystem.Items.AddRange(SerialPort.GetPortNames());
 		}
 
-		private void ReadSerialPorts()
+		private void RescanSystem_Click(object sender, EventArgs e)
 		{
-			serialPorts = SerialPort.GetPortNames();
-		}
-
-		private void FillDropDowns()
-		{
-			DosBoxPorts.IsEnabled = false;
-			SerialPorts.IsEnabled = false;
-
-			SerialPorts.Items.Clear();
-			SerialPorts.Items.AddRange(serialPorts);
-			SerialPorts.IsEnabled = SerialPorts.Items.Count > 0;
-
-			object outO;
-			if (config.TryGetValue("serial", out outO))
-			{
-				var serialPorts = outO as Dictionary<string, string>;
-				if (serialPorts != null)
-				{
-					DosBoxPorts.Items.Clear();
-					foreach (var kvp in serialPorts)
-					{
-						DosBoxPorts.Items.Add(kvp.Key);
-
-						if (kvp.Value.Contains("realport"))
-						{
-							string serial = kvp.Value.Substring(kvp.Value.IndexOf(":") + 1);
-							SerialPorts.Text = serial;
-							DosBoxPorts.Text = kvp.Key;
-						}
-					}
-
-					DosBoxPorts.IsEnabled = DosBoxPorts.Items.Count > 0;
-				}
-			}
-
-			ApplyButton.IsEnabled = SerialPorts.IsEnabled && DosBoxPorts.IsEnabled;
+			LoadConfiguration();
 		}
 	}
 }

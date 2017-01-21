@@ -5,14 +5,36 @@
 		xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
 		xmlns:local="clr-namespace:DOSBoxSerialSwitch"
 		mc:Ignorable="d"
-		Title="DOSBox Serial Switcher" Height="142.373" Width="256.567" ResizeMode="NoResize" Topmost="True">
+		Title="DOSBox Serial Switcher" Height="160" Width="375" MinWidth="375" MinHeight="160" WindowStartupLocation="CenterScreen">
 	<Grid>
-		<Button x:Name="ApplyButton" Content="Apply" HorizontalAlignment="Left" Margin="79,79,0,0" VerticalAlignment="Top" Width="75" HorizontalContentAlignment="Center" IsEnabled="False" IsDefault="True" Click="ApplyButton_Click"/>
-		<Button x:Name="CloseButton" Content="Close" HorizontalAlignment="Left" Margin="159,79,0,0" VerticalAlignment="Top" Width="75" IsCancel="True" Click="CloseButton_Click"/>
-		<Label x:Name="DosBoxLabel" Content="DOSBox" HorizontalAlignment="Left" Margin="10,10,0,0" VerticalAlignment="Top"/>
-		<Label x:Name="label1" Content="Serial Port" HorizontalAlignment="Left" Margin="10,41,0,0" VerticalAlignment="Top"/>
-		<ComboBox x:Name="DosBoxPorts" HorizontalAlignment="Left" Margin="79,13,0,0" VerticalAlignment="Top" Width="155" IsEnabled="False" IsReadOnly="True"/>
-		<ComboBox x:Name="SerialPorts" HorizontalAlignment="Left" Margin="79,44,0,0" VerticalAlignment="Top" Width="155" IsReadOnly="True" IsEnabled="False"/>
+		<Grid Margin="10">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto" />
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="Auto"/>
+			</Grid.RowDefinitions>
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="*"/>
+				<ColumnDefinition Width="Auto"/>
+			</Grid.ColumnDefinitions>
+			<Label x:Name="ConfigFileLabel" Content="Config File" Margin="0" VerticalContentAlignment="Center" Padding="0"/>
+			<TextBox x:Name="ConfigFile" Grid.Column="1" Margin="6,0,0,0" TextWrapping="NoWrap" VerticalContentAlignment="Center" VerticalAlignment="Top" IsReadOnly="True" MinHeight="20"/>
+			<Button x:Name="BrowseConfigFileButton" Content="Browse" Grid.Column="2" Margin="6,0,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" HorizontalContentAlignment="Center" MinWidth="75" TabIndex="0" Click="BrowseConfigFileButton_Click"/>
+			
+			<Label x:Name="SerialPortDosBoxLabel" Content="DOSBox" Margin="0,4,0,0" Grid.Row="1" Padding="0" VerticalContentAlignment="Center"/>
+			<ComboBox x:Name="SerialPortsDosBox" Margin="6,4,0,0" VerticalAlignment="Center" IsEnabled="False" IsReadOnly="True" Grid.Column="1" Grid.Row="1" Padding="6,2,5,2" TabIndex="1" SelectionChanged="SerialPortsDosBox_SelectionChanged"/>
+			
+			<Label x:Name="SerialPortSystemLabel" Content="Serial Port" Grid.Row="2" Padding="0" Margin="0,4,0,0" VerticalContentAlignment="Center"/>
+			<ComboBox x:Name="SerialPortsSystem" Margin="6,4,0,0" VerticalAlignment="Center" IsEnabled="False" Grid.Column="1" Grid.Row="2" TabIndex="2" Padding="6,2,5,2" SelectionChanged="SerialPortsSystem_SelectionChanged" IsEditable="True"/>
+			<Button x:Name="RescanSystem" Content="Rescan" Grid.Column="2" HorizontalAlignment="Left" Margin="6,4,0,0" Grid.Row="2" VerticalAlignment="Top" MinWidth="75" TabIndex="3" Click="RescanSystem_Click"/>
+
+			<WrapPanel Grid.Row="3" Grid.ColumnSpan="3" Margin="0,10,0,0" FlowDirection="RightToLeft">
+				<Button x:Name="CloseButton" Content="Close" HorizontalAlignment="Left" VerticalAlignment="Top" IsCancel="True" Click="CloseButton_Click" Margin="0,0,6,0" MinWidth="75" TabIndex="5"/>
+				<Button x:Name="ApplyButton" Content="Apply" HorizontalAlignment="Left" VerticalAlignment="Top" HorizontalContentAlignment="Center" IsEnabled="False" IsDefault="True" Click="ApplyButton_Click" Margin="0,0,6,0" MinWidth="75" Padding="1" TabIndex="4"/>
+			</WrapPanel>
+		</Grid>
 
 	</Grid>
 </Window>
